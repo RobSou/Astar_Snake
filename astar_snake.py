@@ -11,13 +11,7 @@ GRID_HEIGHT = HEIGHT // CELL_SIZE
 
 # Colors
 WHITE = (255, 255, 255)
-GREY = (125, 125, 125)
-GREEN = (0, 200, 0)
-BLUE = (0, 0, 200)  # Bright blue for snake
-RED = (200, 0, 0)
 BLACK = (0, 0, 0)
-PATH_COLOR = (255, 0, 255)  # Blue for path to food
-TAIL_PATH_COLOR = (255, 165, 0)  # Orange for path from food to tail
 
 # Directions
 UP = (0, -1)
@@ -26,7 +20,8 @@ LEFT = (-1, 0)
 RIGHT = (1, 0)
 DIRECTIONS = [UP, DOWN , LEFT, RIGHT]
 
-def random_position(snake):
+
+def random_position(snake): # This function puts the food in the screen
     while True:
         pos = (random.randint(0, GRID_WIDTH-1), random.randint(0, GRID_HEIGHT-1))
         if pos not in snake:
@@ -67,6 +62,69 @@ def astar(start, goal, snake_body):
                 heapq.heappush(open_set, (f_score[neighbor], neighbor))
     return None  # No path found
 
+def find_path(snake,food):
+    path_to_food = astar(snake[0], food, snake)
+    if path_to_food:
+        path_to_tail = astar(food, snake[-1], snake)
+        if path_to_tail:
+            path = list(path_to_food + path_to_tail)
+        else:
+            path_to_tail = astar(food, snake[-1], snake )
+            if path_to_tail:
+                path_to_food = astar(snake[0], food, snake + path_to_tail)
+                if path_to_food:
+                    path = list(path_to_food + path_to_tail)
+                else:
+                    path = astar(snake[0], snake[-1], snake)
+            else:
+                path = astar(snake[0], snake[-1], snake)
+    else:
+        path = astar(snake[0], snake[-1], snake)
+    return(path)
+
+def go_anywhere(snake):
+    for d in DIRECTIONS:
+        nx, ny = snake[0][0] + d[0], snake[0][1] + d[1]
+        path = astar(snake[0], (nx,ny), snake)
+        if path:
+            break
+        else:
+            continue
+    return path
+
+def draw_snake(snake,screen):
+    snake_len = len(snake)
+    for i, s in enumerate(snake):
+        ratio = i / max(snake_len - 1, 1)
+        # Rainbow gradient using HSV to RGB conversion
+        hue = int(360 * ratio)
+        color = pygame.Color(0)
+        color.hsva = (hue, 100, 100, 100)
+        rect = pygame.Rect(s[0]*CELL_SIZE, s[1]*CELL_SIZE, CELL_SIZE, CELL_SIZE)
+        # Gradually change the size from small (tail) to large (head)
+        min_size = int(CELL_SIZE * 0.4)
+        max_size = CELL_SIZE
+        size = int(min_size + (max_size - min_size) * (1 - ratio))
+        offset = (CELL_SIZE - size) // 2
+        rect = pygame.Rect(s[0]*CELL_SIZE + offset, s[1]*CELL_SIZE + offset, size, size)
+        pygame.draw.rect(screen, color, rect)
+    
+def draw_path(path,screen):
+    if path:
+        for pos in path:
+            rect = pygame.Rect(pos[0]*CELL_SIZE, pos[1]*CELL_SIZE, CELL_SIZE, CELL_SIZE)
+            # Gradient from white to black along the path
+            path_len = len(path)
+            if path_len > 1:
+                idx = path.index(pos)
+                ratio = idx / (path_len - 1)
+            else:
+                ratio = 0
+            shade = int(255 * (1 - ratio))
+            color = (shade, shade, shade)
+            pygame.draw.rect(screen, color, rect)
+
+
 def main():
     pygame.init()
     screen = pygame.display.set_mode((WIDTH, HEIGHT))
@@ -91,14 +149,10 @@ def main():
         screen.fill(BLACK)
 
         # Move snake
-        if path:
-            next_pos = path[0]
-            path.remove(next_pos)
-            new_head = next_pos
-        # No safe path, try to survive (move anywhere safe)
-        #if (new_head in snake or
-        #    not (0 <= new_head[0] < GRID_WIDTH) or
-        #    not (0 <= new_head[1] < GRID_HEIGHT)):
+        next_pos = path[0]
+        path.remove(next_pos)
+        new_head = next_pos
+
         if new_head in snake and new_head != snake[-1]:
             print("ran into itself!")
             print(snake[0])
@@ -108,73 +162,18 @@ def main():
         if new_head == food:
             score += 1
             food = random_position(snake)
-            search = True
         else:
             snake.pop()
-            search = True
 
-        #if there is no path find path from head to food
-        if (search or len(path) <= 2):
-            path_to_food = astar(snake[0], food, snake)
-            if path_to_food:
-                path_to_tail = astar(food, snake[-1], snake)
-                if path_to_tail:
-                    path = list(path_to_food + path_to_tail)
-                else:
-                    path_to_tail = astar(food, snake[-1], snake )
-                    if path_to_tail:
-                        path_to_food = astar(snake[0], food, snake + path_to_tail)
-                        if path_to_food:
-                            path = list(path_to_food + path_to_tail)
-                        else:
-                            path = astar(snake[0], snake[-1], snake)
-                    else:
-                        path = astar(snake[0], snake[-1], snake)
-            else:
-                path = astar(snake[0], snake[-1], snake)
+        path = find_path(snake,food)
 
         if path is None:
-            print("you are here")
-            for d in DIRECTIONS:
-                nx, ny = snake[0][0] + d[0], snake[0][1] + d[1]
-                path = astar(snake[0], (nx,ny), snake)
-                if path:
-                    break
-                else:
-                    print(nx, ny)
-                    print(snake[0])
-                    continue                    
+            path = go_anywhere(snake)                   
         
-        # Draw path to food in solid blue, fixed size
-        if path and False:
-            for pos in path:
-                rect = pygame.Rect(pos[0]*CELL_SIZE, pos[1]*CELL_SIZE, CELL_SIZE, CELL_SIZE)
-                # Gradient from white to black along the path
-                path_len = len(path)
-                if path_len > 1:
-                    idx = path.index(pos)
-                    ratio = idx / (path_len - 1)
-                else:
-                    ratio = 0
-                shade = int(255 * (1 - ratio))
-                color = (shade, shade, shade)
-                pygame.draw.rect(screen, color, rect)
         # Draw snake in rainbow gradient, fixed size
-        snake_len = len(snake)
-        for i, s in enumerate(snake):
-            ratio = i / max(snake_len - 1, 1)
-            # Rainbow gradient using HSV to RGB conversion
-            hue = int(360 * ratio)
-            color = pygame.Color(0)
-            color.hsva = (hue, 100, 100, 100)
-            rect = pygame.Rect(s[0]*CELL_SIZE, s[1]*CELL_SIZE, CELL_SIZE, CELL_SIZE)
-            # Gradually change the size from small (tail) to large (head)
-            min_size = int(CELL_SIZE * 0.4)
-            max_size = CELL_SIZE
-            size = int(min_size + (max_size - min_size) * (1 - ratio))
-            offset = (CELL_SIZE - size) // 2
-            rect = pygame.Rect(s[0]*CELL_SIZE + offset, s[1]*CELL_SIZE + offset, size, size)
-            pygame.draw.rect(screen, color, rect)
+        draw_snake(snake, screen)
+        # Draw the path to follow
+        draw_path(path, screen)
         # Draw food as a yellow circle for visibility
         food_rect = pygame.Rect(food[0]*CELL_SIZE, food[1]*CELL_SIZE, CELL_SIZE, CELL_SIZE)
         pygame.draw.ellipse(screen, (255, 0, 0), food_rect)
